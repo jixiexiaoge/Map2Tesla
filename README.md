@@ -13,6 +13,14 @@ Navipilot 是一款 Android 车机导航辅助 App，核心能力是把手机上
 
 除了投屏，Navipilot 也可以连接 comma3 / openpilot 设备，把导航数据、车辆状态、车道线识别结果和红绿灯辅助信息联动起来，用于驾驶辅助场景。
 
+<div align="center">
+
+## [下载最新版 Android 安装包](https://github.com/jixiexiaoge/Map2Tesla/releases)
+
+前往 Releases 页面下载并安装最新版本。
+
+</div>
+
 > **安全说明**：本项目提供导航显示、投屏、设备状态展示和驾驶辅助信息，不替代驾驶员观察、判断或车辆原有安全系统。驾驶员必须始终注意道路并对车辆控制负责。
 
 ## 主要功能
@@ -35,6 +43,14 @@ Navipilot 是一款 Android 车机导航辅助 App，核心能力是把手机上
 - 车内平板、电脑或另一台手机通过浏览器查看并操作导航地图。
 - 需要在车机大屏使用高德车机版、腾讯车机版、百度车机版，但车辆系统本身无法安装这些 App。
 - 希望导航投屏和 comma3 / openpilot 辅助信息共存，但两者也可以独立使用。
+
+### 投屏效果示例
+
+<p align="center">
+  <a href="images/tesla%20(1).jpg"><img src="images/tesla%20(1).jpg" alt="特斯拉浏览器中的导航投屏示例一" width="32%"></a>
+  <a href="images/tesla%20(2).jpg"><img src="images/tesla%20(2).jpg" alt="特斯拉浏览器中的导航投屏示例二" width="32%"></a>
+  <a href="images/tesla%20(3).jpg"><img src="images/tesla%20(3).jpg" alt="特斯拉浏览器中的导航投屏示例三" width="32%"></a>
+</p>
 
 ## 投屏工作原理
 
