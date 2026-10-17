@@ -1,0 +1,52 @@
+{
+  "plans": [
+    {
+      "code": "sponsor_small",
+      "name": "支持一下",
+      "price_cents": 200,
+      "duration_days": null
+    },
+    {
+      "code": "sponsor_coffee",
+      "name": "请开发者喝杯咖啡",
+      "price_cents": 500,
+      "duration_days": null
+    },
+    {
+      "code": "sponsor_support",
+      "name": "支持持续开发",
+      "price_cents": 2000,
+      "duration_days": null
+    },
+    {
+      "code": "five_days",
+      "name": "Carrot搭子投屏体验 5 天",
+      "price_cents": 200,
+      "duration_days": 5
+    },
+    {
+      "code": "thirty_days",
+      "name": "Carrot搭子投屏畅享 30 天",
+      "price_cents": 500,
+      "duration_days": 30
+    },
+    {
+      "code": "ninety_days",
+      "name": "Carrot搭子投屏畅享 90 天",
+      "price_cents": 1400,
+      "duration_days": 90
+    },
+    {
+      "code": "yearly",
+      "name": "Carrot搭子投屏畅享 365 天",
+      "price_cents": 5000,
+      "duration_days": 365
+    },
+    {
+      "code": "lifetime",
+      "name": "Carrot搭子投屏永久解锁",
+      "price_cents": 9900,
+      "duration_days": null
+    }
+  ]
+}

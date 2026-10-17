@@ -1,0 +1,64 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+**/build/
+.kotlin/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.hprof
+
+# Never publish local credentials, signing material, production data, or APKs.
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pk8
+*.p7b
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.db
+*.sqlite
+*.sqlite3
+*.apk
+.env
+.env.*
+!.env.example
+secrets.properties
+release/*.apk
+app/src/main/assets/offline-mfi/
+app/src/main/assets/**/identity*
+app/src/main/assets/**/certificate*
+
+# Local automation artifacts and imported third-party reference trees.
+.playwright-mcp/
+**/__pycache__/
+/参考代码资料/
+/open-headunit-main/
+
+# API Keys — 本地配置，不提交到仓库
+secrets.properties
+
+# AtomCode local-scope configs (machine-specific)
+.atomcode/local/
+
+# Reference accessory identity files are local test material, never repository assets.
+/参考代码资料/carplay-dev-kit/mfi-identity/*.pk8
+/参考代码资料/carplay-dev-kit/mfi-identity/*.p12
+/参考代码资料/carplay-dev-kit/mfi-identity/*private*.pem
+/参考代码资料/carplay-dev-kit/mfi-identity/identity*.pem
+/参考代码资料/carplay-dev-kit/mfi-identity/certificate*.p7b
+/参考代码资料/carplay-dev-kit/mfi-identity/certificate*.der
+/参考代码资料/carplay-dev-kit/mfi-identity/certificate*.pem

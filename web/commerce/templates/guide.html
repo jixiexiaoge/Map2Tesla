@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>特投屏使用指南</title>
+  <style>
+    body{max-width:820px;margin:0 auto;padding:32px 20px 64px;color:#18324f;font:16px/1.75 "Microsoft YaHei",system-ui,sans-serif}h1{font-size:34px}h2{margin-top:32px}a{color:#1d4f91}.note{padding:16px;background:#edf5ff;border-radius:12px}.warning{background:#fff7ed;color:#8a4b11}table{width:100%;border-collapse:collapse;margin:14px 0}td,th{border:1px solid #e5edf5;padding:10px;text-align:left}th{background:#f7fbff}
+  </style>
+</head>
+<body>
+  <a href="/">← 返回首页</a>
+  <h1>特投屏使用指南</h1>
+
+  <h2>功能差异</h2>
+  <table>
+    <tr><th>手机</th><th>可实现</th><th>限制</th></tr>
+    <tr><td>Android</td><td>后台虚拟屏投地图和指定 App，并支持浏览器触摸反控。</td><td>需要 Shizuku 或 Stellar 授权。</td></tr>
+    <tr><td>iPhone</td><td>通过 AirPlay 屏幕镜像，把高德、百度、腾讯等地图画面显示到 Tesla 浏览器。</td><td>iOS 不允许网页反控其他 App，因此不能从浏览器操作 iPhone。</td></tr>
+  </table>
+
+  <h2>Android 启动投屏</h2>
+  <ol>
+    <li>使用 Android 13 或更高版本设备。</li>
+    <li>安装要投屏的车机地图或 App。</li>
+    <li>启动 Shizuku 或 Stellar，并在特投屏内授予权限。</li>
+    <li>在“投屏”页选择“局域网地址”或“Tesla 固定地址”。</li>
+    <li>点击开始投屏后，在车机浏览器打开 App 显示的地址即可查看和操作地图。</li>
+  </ol>
+
+  <h2>iPhone 启动镜像</h2>
+  <ol>
+    <li>在 Android 手机上的特投屏打开“iPhone”页并点击“开启接收”。</li>
+    <li>确认 iPhone 和 Android 手机处在同一局域网。</li>
+    <li>在 iPhone 控制中心打开“屏幕镜像”，选择“特投屏 iPhone 镜像”。</li>
+    <li>切回高德、百度、腾讯等地图 App 导航。</li>
+    <li>在 Tesla 浏览器打开特投屏显示的地址查看画面。</li>
+  </ol>
+
+  <h2>关于车道级</h2>
+  <p>特投屏负责把手机画面传到车机浏览器，不自带地图导航数据。地图 App 自己显示车道级导航时，浏览器会同步看到；如果地图 App 当前没有显示车道级，特投屏也不能额外生成车道级信息。</p>
+
+  <h2>永久免费与自愿赞助</h2>
+  <p>特投屏5.0 所有功能永久免费、不限时，无需购买会员或输入解锁密码。如果觉得不错，欢迎在 App 的“赞助”页面自愿支持开发。不赞助、不联网查询赞助状态，也不影响任何功能。</p>
+  <p class="note warning">请确认连接模式：Android 虚拟屏支持反控；AirPlay 仅显示和播放声音；CarPlay 可触控，但仍需有效认证。</p>
+  <p class="note">投屏画面及交互仅在本地网络中传输。请勿在驾驶过程中进行复杂操作，驾驶员应始终专注道路并遵守当地法规。</p>
+</body>
+</html>

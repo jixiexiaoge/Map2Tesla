@@ -1,0 +1,1241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>特投屏 - 多模式车机浏览器投屏</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 16%, rgba(36, 107, 253, .28), transparent 34%),
+        radial-gradient(circle at 84% 18%, rgba(245, 124, 66, .18), transparent 30%),
+        linear-gradient(145deg, #050812 0%, #0a1221 45%, #020308 100%);
+      color: #fff;
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    #screen {
+      width: 100vw;
+      height: 100vh;
+      width: 100dvw;
+      height: 100dvh;
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+      object-fit: contain;
+      object-position: center;
+      background: #000;
+      touch-action: none;
+    }
+    #status {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(880px, calc(100vw - 36px));
+      max-height: calc(100dvh - 32px);
+      overflow: auto;
+      padding: 26px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 28px;
+      background: linear-gradient(145deg, rgba(10, 18, 33, .92), rgba(5, 8, 18, .86));
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .52), inset 0 1px 0 rgba(255, 255, 255, .08);
+      text-align: center;
+      white-space: normal;
+      pointer-events: auto;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      z-index: 3;
+    }
+    #status::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      background: linear-gradient(120deg, rgba(83, 153, 255, .34), transparent 45%, rgba(255, 170, 94, .24));
+      opacity: .9;
+      z-index: -1;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(65, 113, 190, .2);
+      color: #9ec7ff;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 20px rgba(52, 211, 153, .9);
+    }
+    #statusTitle {
+      margin: 16px 0 6px;
+      font-size: clamp(28px, 5.2vw, 48px);
+      line-height: 1.05;
+      letter-spacing: -.04em;
+    }
+    #statusSubtitle {
+      margin: 0 auto;
+      max-width: 680px;
+      color: rgba(226, 232, 240, .78);
+      font-size: clamp(15px, 2.4vw, 20px);
+      line-height: 1.55;
+    }
+    #statusReason {
+      margin: 18px auto 0;
+      width: fit-content;
+      max-width: 100%;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(245, 158, 11, .14);
+      color: #fcd34d;
+      font-size: clamp(14px, 2.2vw, 18px);
+      font-weight: 700;
+    }
+    .feature-grid,
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .feature-grid {
+      margin: 22px 0 18px;
+    }
+    .guide-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin: 12px 0 18px;
+    }
+    .feature,
+    .guide-item {
+      min-height: 98px;
+      padding: 14px 12px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .075);
+      border: 1px solid rgba(255, 255, 255, .09);
+    }
+    .guide-item {
+      min-height: auto;
+      text-align: left;
+    }
+    .feature strong,
+    .guide-item strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #fff;
+      font-size: 16px;
+    }
+    .feature span,
+    .guide-item span {
+      color: rgba(226, 232, 240, .7);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .repo {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: rgba(52, 211, 153, .1);
+      color: #a7f3d0;
+      font: 13px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace;
+      word-break: break-all;
+    }
+    .status-tip {
+      margin: 0;
+      color: rgba(148, 163, 184, .92);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #promoBanner {
+      position: fixed;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      z-index: 2;
+      display: none;
+      gap: 10px;
+      align-items: center;
+      max-width: min(920px, calc(100vw - 24px));
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: rgba(7, 12, 22, .66);
+      border: 1px solid rgba(255, 255, 255, .1);
+      color: rgba(241, 245, 249, .86);
+      font-size: 13px;
+      white-space: nowrap;
+      pointer-events: none;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .promo-highlight {
+      color: #fde68a;
+      font-weight: 800;
+    }
+    @media (max-width: 640px) {
+      #status {
+        padding: 20px;
+        border-radius: 22px;
+      }
+      @media (orientation: landscape) and (max-height: 620px) {
+        #status {
+          width: min(1040px, calc(100vw - 112px));
+          padding: 16px 20px;
+          border-radius: 20px;
+        }
+        #statusTitle {
+          margin: 10px 0 4px;
+          font-size: clamp(24px, 4vw, 38px);
+        }
+        #statusSubtitle {
+          font-size: 14px;
+        }
+        #statusReason {
+          margin-top: 10px;
+          padding: 7px 12px;
+        }
+        .feature-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          margin: 12px 0;
+        }
+        .feature {
+          min-height: 74px;
+          padding: 10px;
+        }
+        .guide-grid,
+        .status-tip {
+          display: none;
+        }
+      }
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+      .guide-grid {
+        grid-template-columns: 1fr;
+      }
+      .feature,
+      .guide-item {
+        min-height: auto;
+      }
+      #promoBanner {
+        width: calc(100vw - 24px);
+        justify-content: center;
+        white-space: normal;
+        border-radius: 18px;
+        text-align: center;
+      }
+    }
+    /* 侧边 Dock 栏样式 */
+    .dock-bar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 68px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 4px;
+      background: rgba(10, 16, 28, .76);
+      border-right: 1px solid rgba(255, 255, 255, .12);
+      box-shadow: 4px 0 24px rgba(0, 0, 0, .48);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      transition: transform .28s cubic-bezier(.16, 1, .3, 1);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .dock-bar.collapsed {
+      transform: translateX(-100%);
+    }
+    .dock-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    .dock-apps {
+      flex: 1;
+      justify-content: center;
+      overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding: 6px 0;
+    }
+    .dock-apps::-webkit-scrollbar {
+      display: none;
+    }
+    .dock-item {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .08);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: all .2s ease;
+      padding: 0;
+    }
+    .dock-item:hover,
+    .dock-item:active {
+      background: rgba(255, 255, 255, .18);
+      border-color: rgba(255, 255, 255, .28);
+    }
+    .dock-item.active {
+      background: linear-gradient(135deg, rgba(14, 165, 233, .45), rgba(29, 78, 216, .45));
+      border-color: #38bdf8;
+      box-shadow: 0 0 16px rgba(56, 189, 248, .5), inset 0 1px 0 rgba(255, 255, 255, .3);
+    }
+    .dock-item.active::before {
+      content: "";
+      position: absolute;
+      left: -6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 16px;
+      border-radius: 99px;
+      background: #38bdf8;
+      box-shadow: 0 0 8px #38bdf8;
+    }
+    .dock-item.disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+    .dock-app-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+    }
+    .dock-app-icon,
+    .dock-app-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+    }
+    .dock-app-icon {
+      display: block;
+      object-fit: contain;
+    }
+    .dock-app-name {
+      position: absolute;
+      left: 58px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(15, 23, 42, .92);
+      border: 1px solid rgba(255, 255, 255, .14);
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, .4);
+    }
+    .dock-item:hover .dock-app-name {
+      opacity: 1;
+    }
+    .dock-icon {
+      width: 22px;
+      height: 22px;
+    }
+    .dock-fps-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      padding: 4px 0;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, .36);
+      border: 1px solid rgba(125, 255, 154, .18);
+      color: #86efac;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    #dockFpsVal {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .dock-fps-label {
+      font-size: 9px;
+      color: rgba(134, 239, 172, .75);
+      letter-spacing: .05em;
+    }
+    /* 折叠后左上角悬浮展开按钮 */
+    #dockExpandBtn {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      z-index: 11;
+      display: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: rgba(10, 16, 28, .82);
+      border: 1px solid rgba(255, 255, 255, .16);
+      color: #38bdf8;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, .4);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #dockExpandBtn.visible {
+      display: flex;
+    }
+    #sound {
+      position: fixed;
+      right: 12px;
+      top: 12px;
+      z-index: 2;
+      display: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 14px;
+      background: rgba(15, 23, 42, .72);
+      border: 1px solid rgba(255, 255, 255, .12);
+      color: #fff;
+      font-size: 16px;
+      touch-action: manipulation;
+    }
+  </style>
+</head>
+<body>
+  <img id="screen" src="/stream" alt="特投屏车机浏览器画面">
+  <aside id="dockBar" class="dock-bar" aria-label="应用侧边栏">
+    <div class="dock-section dock-top">
+      <button id="dockToggleBtn" type="button" class="dock-item" title="折叠 Dock 栏">
+        <svg id="dockToggleIcon" class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        <span class="dock-app-name">折叠 Dock</span>
+      </button>
+      <button id="dockFullscreenBtn" type="button" class="dock-item" title="进入全屏">
+        <svg id="dockFullscreenEnterIcon" class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="8 3 3 3 3 8"/>
+          <polyline points="16 3 21 3 21 8"/>
+          <polyline points="8 21 3 21 3 16"/>
+          <polyline points="16 21 21 21 21 16"/>
+        </svg>
+        <svg id="dockFullscreenExitIcon" class="dock-icon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="8 3 8 8 3 8"/>
+          <polyline points="16 3 16 8 21 8"/>
+          <polyline points="8 21 8 16 3 16"/>
+          <polyline points="16 21 16 16 21 16"/>
+        </svg>
+        <span id="dockFullscreenLabel" class="dock-app-name">进入全屏</span>
+      </button>
+      <div id="dockFpsBox" class="dock-fps-box" title="画面帧率">
+        <span id="dockFpsVal">--</span>
+        <span class="dock-fps-label">FPS</span>
+      </div>
+    </div>
+
+    <div id="dockApps" class="dock-section dock-apps">
+      <!-- 动态渲染 9 个应用项 -->
+    </div>
+  </aside>
+  <button id="dockExpandBtn" type="button" title="展开应用 Dock 栏">
+    <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  </button>
+  <button id="sound" type="button">开启声音</button>
+  <section id="status" aria-live="polite">
+    <div class="brand"><span class="brand-dot"></span>特投屏 · 多模式车机投屏</div>
+    <h1 id="statusTitle">特投屏</h1>
+    <p id="statusSubtitle">支持车机地图和指定 App，可在车机浏览器中查看与触摸控制。</p>
+    <div id="statusReason">正在连接手机投屏服务...</div>
+    <div id="featureGrid" class="feature-grid" aria-hidden="true">
+      <div class="feature">
+        <strong>原生 CarPlay</strong>
+        <span>支持 USB MFi/BAA 认证、iAP2 与有线/无线 CarPlay 会话。</span>
+      </div>
+      <div class="feature">
+        <strong>浏览器反控</strong>
+        <span>车机触控实时回传，直接操作 CarPlay、地图和指定手机 App。</span>
+      </div>
+      <div class="feature">
+        <strong>全尺寸自适应</strong>
+        <span>自动识别浏览器可视区域、横竖屏和全屏变化，动态调整虚拟屏。</span>
+      </div>
+      <div class="feature">
+        <strong>Tesla 固定地址</strong>
+        <span>支持 99.99.99.99 固定入口，也支持普通车机局域网访问。</span>
+      </div>
+      <div class="feature">
+        <strong>无线连接</strong>
+        <span>支持蓝牙引导并复用手机固定热点，减少热点切换导致的断线。</span>
+      </div>
+      <div class="feature">
+        <strong>自动恢复</strong>
+        <span>虚拟屏、控制通道和视频流异常时自动重连并恢复当前应用。</span>
+      </div>
+    </div>
+    <div id="guideGrid" class="guide-grid" aria-hidden="true">
+      <div class="guide-item">
+        <strong>手机端选择模式</strong>
+        <span>完成 Stellar / Shizuku 授权，再启动应用投屏。</span>
+      </div>
+      <div class="guide-item">
+        <strong>车机浏览器访问</strong>
+        <span>输入 App 显示的局域网地址，或使用已配置的 Tesla 固定地址。</span>
+      </div>
+    </div>
+    <p class="status-tip">
+      <span id="statusTip">如果长时间停留在此页，请确认手机端投屏仍在运行、Stellar / Shizuku 已授权，并检查当前连接模式的网络是否可用。</span>
+      <br>软件地址：<span class="repo">https://github.com/jixiexiaoge/Map2Tesla</span>
+    </p>
+  </section>
+  <div id="promoBanner">特投屏5.0 · <span class="promo-highlight">本软件永久免费，所有功能不限时</span> · 本地网络传输</div>
+  <script>
+    const screen = document.getElementById('screen');
+    const status = document.getElementById('status');
+    const statusReason = document.getElementById('statusReason');
+    const sound = document.getElementById('sound');
+    const statusTitle = document.getElementById('statusTitle');
+    const statusSubtitle = document.getElementById('statusSubtitle');
+    const promoBanner = document.getElementById('promoBanner');
+    const dockBar = document.getElementById('dockBar');
+    const dockFpsVal = document.getElementById('dockFpsVal');
+    const dockToggleBtn = document.getElementById('dockToggleBtn');
+    const dockExpandBtn = document.getElementById('dockExpandBtn');
+    const dockFullscreenBtn = document.getElementById('dockFullscreenBtn');
+    const dockFullscreenEnterIcon = document.getElementById('dockFullscreenEnterIcon');
+    const dockFullscreenExitIcon = document.getElementById('dockFullscreenExitIcon');
+    const dockFullscreenLabel = document.getElementById('dockFullscreenLabel');
+    let dockCollapsed = false;
+    let lastRenderedAppsKey = '';
+    const pointerIds = new Map();
+    const lastMoveAt = new Map();
+    let lastPointerDownAt = -Infinity;
+    const PLAYER_REVISION = '20261016-1';
+    const CARPLAY_HOST_ACTIVITY = 'com.shilapi.xcertplay.CarPlayHostActivity';
+    let control = null;
+    let heartbeatTimer = null;
+    let retryTimer = null;
+    let retryReason = '';
+    let retryRemaining = 0;
+    let retryReloadStream = false;
+    let reconnecting = false;
+    let outputWidth = 1180;
+    let outputHeight = 920;
+    let viewportTimer = null;
+    let interactive = true;
+    let lastDisplayId = -1;
+    let lastFrameSequence = -1;
+    let lastStreamReloadAt = 0;
+    let audioFormat = '';
+    let audioContext = null;
+    let audioProcessor = null;
+    let audioReader = null;
+    let audioAbort = null;
+    let audioGeneration = 0;
+    let controlError = '';
+    let audioChunks = [];
+    let audioPending = new Uint8Array(0);
+    let streamHealthy = false;
+
+    function showStatus(reason) {
+      statusReason.textContent = reason;
+      status.style.display = 'block';
+    }
+
+    function hideStatus() {
+      status.style.display = 'none';
+    }
+
+    function markConnected() {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      retryReason = '';
+      retryRemaining = 0;
+      retryReloadStream = false;
+      reconnecting = false;
+      hideStatus();
+    }
+
+    function updatePromoVisibility(streamRunning) {
+      promoBanner.style.display = streamRunning ? 'flex' : 'none';
+    }
+
+    screen.addEventListener('load', () => {
+      if (streamHealthy) {
+        markConnected();
+      }
+    });
+
+    screen.addEventListener('error', () => {
+      scheduleRetry('视频流连接异常', true);
+    });
+
+    function reloadStream(reason) {
+      const now = Date.now();
+      if (now - lastStreamReloadAt < 1500) return;
+      lastStreamReloadAt = now;
+      showStatus(reason || '正在刷新投屏画面...');
+      screen.src = '/stream?t=' + now;
+    }
+
+    function connectControl() {
+      if (control &&
+          (control.readyState === WebSocket.OPEN ||
+           control.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(scheme + '//' + location.host + '/control');
+      control = socket;
+      socket.addEventListener('open', () => {
+        if (control !== socket) return;
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = setInterval(() => {
+          if (control === socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 2000);
+        reconnecting = false;
+        reportViewport();
+        if (streamHealthy) {
+          markConnected();
+        }
+      });
+      socket.addEventListener('close', () => {
+        if (control !== socket) return;
+        clearInterval(heartbeatTimer);
+        pointerIds.clear();
+        lastMoveAt.clear();
+        control = null;
+        if (streamHealthy) {
+          hideStatus();
+          setTimeout(connectControl, 1000);
+        } else {
+          scheduleRetry('控制连接已断开', false);
+        }
+      });
+      socket.addEventListener('error', () => {
+        if (control === socket) {
+          runSafely(() => socket.close());
+          if (!streamHealthy) {
+            scheduleRetry('控制连接异常', false);
+          }
+        }
+      });
+      socket.addEventListener('message', event => {
+        if (control !== socket) return;
+        try {
+          const result = JSON.parse(event.data);
+          if (result.type === 'controlResult') {
+            controlError = result.ok ? '' : '触控或应用切换失败，请检查手机端状态';
+          } else if (result.type === 'error') {
+            controlError = result.reason || '控制指令失败';
+          }
+          if (controlError) console.warn(controlError);
+        } catch (error) {
+          console.warn('无法解析控制响应', error);
+        }
+      });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && !retryTimer &&
+          (!control || control.readyState === WebSocket.CLOSED)) {
+        connectControl();
+      }
+    });
+
+    function viewportSize() {
+      const viewport = window.visualViewport;
+      return {
+        width: Math.round(viewport ? viewport.width : document.documentElement.clientWidth),
+        height: Math.round(viewport ? viewport.height : document.documentElement.clientHeight)
+      };
+    }
+
+    let viewportRequestPending = false;
+    async function reportViewport() {
+      if (!interactive) return;
+      const viewport = viewportSize();
+      if (control && control.readyState === WebSocket.OPEN) {
+        control.send(JSON.stringify({
+          type: 'viewport',
+          width: viewport.width,
+          height: viewport.height
+        }));
+        return;
+      }
+      if (viewportRequestPending) return;
+      viewportRequestPending = true;
+      try {
+        const response = await fetch(
+        '/viewport?width=' + encodeURIComponent(viewport.width) +
+          '&height=' + encodeURIComponent(viewport.height) +
+          '&t=' + Date.now(),
+          { method: 'POST', cache: 'no-store' }
+        );
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+      } catch (error) {
+        console.warn('Viewport update failed', error);
+      } finally {
+        viewportRequestPending = false;
+      }
+    }
+
+    function scheduleViewportReport() {
+      clearTimeout(viewportTimer);
+      viewportTimer = setTimeout(reportViewport, 300);
+    }
+
+    window.addEventListener('resize', scheduleViewportReport);
+    window.addEventListener('orientationchange', scheduleViewportReport);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', scheduleViewportReport);
+    }
+
+    function updateModePresentation(health) {
+      const carPlay = health.currentActivity === CARPLAY_HOST_ACTIVITY;
+      const airPlay = health.interactive === false;
+      document.body.classList.toggle('carplay', carPlay);
+      statusTitle.textContent = airPlay ? 'AirPlay 接收已就绪' : carPlay ? 'CarPlay 正在准备' : '特投屏';
+      statusSubtitle.textContent = airPlay
+        ? '在 iPhone、iPad 或 Mac 的「屏幕镜像」中选择「' +
+          (health.receiverName || '特投屏 AirPlay') + '」，连接后画面会自动显示，无需再次点击投屏。'
+        : carPlay
+        ? 'USB 认证、蓝牙和网络准备完成后，CarPlay 画面与设置会自动显示，并支持车机浏览器触控。'
+        : '支持车机地图、指定 App 与 CarPlay，可在车机浏览器中查看和触摸控制。';
+      document.getElementById('featureGrid').style.display = airPlay ? 'none' : '';
+      document.getElementById('guideGrid').style.display = airPlay ? 'none' : '';
+      document.getElementById('statusTip').textContent = airPlay
+        ? '发送设备与手机需在同一网络。断开后此页面会等待重新连接。AirPlay 为单向镜像，不支持反控发送设备。'
+        : '请确认手机投屏仍在运行、Stellar / Shizuku 已授权，并检查当前连接模式的网络。';
+    }
+
+    function scheduleRetry(reason, shouldReloadStream) {
+      retryReason = reason;
+      retryReloadStream = retryReloadStream || shouldReloadStream;
+      if (retryTimer) {
+        renderRetry();
+        return;
+      }
+
+      renderRetry();
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        reconnecting = true;
+        showStatus('正在重新连接手机投屏服务...');
+        if (retryReloadStream) {
+          reloadStream('正在重新连接视频流...');
+        }
+        retryReloadStream = false;
+        connectControl();
+        setTimeout(updateStats, 500);
+      }, 2000);
+    }
+
+    function renderRetry() {
+      showStatus(retryReason + '，2 秒后自动重试');
+    }
+
+    function runSafely(action) {
+      try {
+        action();
+      } catch (_) {
+        // The close event or the next health poll will finish recovery.
+      }
+    }
+
+    function allocatePointerId(browserId) {
+      if (pointerIds.has(browserId)) return pointerIds.get(browserId);
+      const used = new Set(pointerIds.values());
+      const id = used.has(0) ? (used.has(1) ? null : 1) : 0;
+      if (id !== null) pointerIds.set(browserId, id);
+      return id;
+    }
+
+    function normalizedPoint(event) {
+      const rect = screen.getBoundingClientRect();
+      const scale = Math.min(
+        rect.width / outputWidth,
+        rect.height / outputHeight
+      );
+      const width = outputWidth * scale;
+      const height = outputHeight * scale;
+      const left = rect.left + (rect.width - width) / 2;
+      const top = rect.top + (rect.height - height) / 2;
+      return {
+        x: Math.max(0, Math.min(1, (event.clientX - left) / width)),
+        y: Math.max(0, Math.min(1, (event.clientY - top) / height))
+      };
+    }
+
+    function sendPointer(event, action) {
+      if (!interactive) return;
+      if (!control || control.readyState !== WebSocket.OPEN) return;
+      const pointerId = action === 0
+        ? allocatePointerId(event.pointerId)
+        : pointerIds.get(event.pointerId);
+      if (pointerId === undefined || pointerId === null) return;
+      const point = normalizedPoint(event);
+      control.send(JSON.stringify({
+        type: 'pointer',
+        action,
+        pointerId,
+        x: point.x,
+        y: point.y
+      }));
+      if (action === 1 || action === 3) {
+        pointerIds.delete(event.pointerId);
+        lastMoveAt.delete(event.pointerId);
+      }
+    }
+
+    screen.addEventListener('pointerdown', event => {
+      if (!interactive) return;
+      event.preventDefault();
+      lastPointerDownAt = performance.now();
+      if (typeof screen.setPointerCapture === 'function') {
+        try {
+          screen.setPointerCapture(event.pointerId);
+        } catch (error) {
+          console.warn('无法保持指针捕获，继续发送触控', error);
+        }
+      }
+      sendPointer(event, 0);
+    });
+
+    screen.addEventListener('pointermove', event => {
+      if (!interactive) return;
+      if (!pointerIds.has(event.pointerId)) return;
+      event.preventDefault();
+      const now = performance.now();
+      if (now - (lastMoveAt.get(event.pointerId) || 0) < 16) return;
+      lastMoveAt.set(event.pointerId, now);
+      sendPointer(event, 2);
+    });
+
+    screen.addEventListener('pointerup', event => {
+      if (!interactive) return;
+      event.preventDefault();
+      lastPointerDownAt = performance.now();
+      sendPointer(event, 1);
+    });
+
+    screen.addEventListener('pointercancel', event => {
+      if (!interactive) return;
+      lastPointerDownAt = performance.now();
+      sendPointer(event, 3);
+    });
+
+    // Some in-car Chromium builds deliver click without pointer events on an MJPEG <img>.
+    screen.addEventListener('click', event => {
+      if (!interactive || performance.now() - lastPointerDownAt < 1200) return;
+      event.preventDefault();
+      sendPointer(event, 0);
+      sendPointer(event, 1);
+    });
+
+    // 侧边 Dock 栏触控拦截与动作响应
+    if (dockBar) {
+      ['pointerdown', 'pointermove', 'pointerup', 'click', 'touchstart', 'touchend'].forEach(evtName => {
+        dockBar.addEventListener(evtName, event => event.stopPropagation());
+      });
+    }
+
+    if (dockExpandBtn) {
+      ['pointerdown', 'pointermove', 'pointerup', 'click', 'touchstart', 'touchend'].forEach(evtName => {
+        dockExpandBtn.addEventListener(evtName, event => event.stopPropagation());
+      });
+      dockExpandBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        dockCollapsed = false;
+        dockBar.classList.remove('collapsed');
+        dockExpandBtn.classList.remove('visible');
+      });
+    }
+
+    if (dockToggleBtn) {
+      dockToggleBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        dockCollapsed = true;
+        dockBar.classList.add('collapsed');
+        if (dockExpandBtn) {
+          dockExpandBtn.classList.add('visible');
+        }
+      });
+    }
+
+    function isDocumentFullscreen() {
+      return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+
+    function updateFullscreenButton() {
+      const fullscreen = isDocumentFullscreen();
+      if (dockFullscreenBtn) {
+        dockFullscreenBtn.title = fullscreen ? '退出全屏' : '进入全屏';
+      }
+      if (dockFullscreenEnterIcon) {
+        dockFullscreenEnterIcon.style.display = fullscreen ? 'none' : 'block';
+      }
+      if (dockFullscreenExitIcon) {
+        dockFullscreenExitIcon.style.display = fullscreen ? 'block' : 'none';
+      }
+      if (dockFullscreenLabel) {
+        dockFullscreenLabel.textContent = fullscreen ? '退出全屏' : '进入全屏';
+      }
+    }
+
+    if (dockFullscreenBtn) {
+      dockFullscreenBtn.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          if (isDocumentFullscreen()) {
+            const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exitFullscreen) {
+              await Promise.resolve(exitFullscreen.call(document));
+            }
+          } else {
+            const root = document.documentElement;
+            if (root.requestFullscreen) {
+              await root.requestFullscreen({ navigationUI: 'hide' });
+            } else if (root.webkitRequestFullscreen) {
+              await Promise.resolve(root.webkitRequestFullscreen());
+            } else {
+              dockFullscreenBtn.title = '当前浏览器不支持网页全屏';
+            }
+          }
+        } catch (error) {
+          dockFullscreenBtn.title = '浏览器拒绝全屏，请检查车机浏览器设置';
+        } finally {
+          updateFullscreenButton();
+        }
+      });
+      document.addEventListener('fullscreenchange', updateFullscreenButton);
+      document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+      updateFullscreenButton();
+    }
+
+    function renderDockApps(apps, currentPackage) {
+      const container = document.getElementById('dockApps');
+      if (!container || !apps || !apps.length) return;
+
+      const key = currentPackage + '|' + JSON.stringify(apps);
+      if (key === lastRenderedAppsKey) return;
+      lastRenderedAppsKey = key;
+
+      container.replaceChildren();
+      apps.forEach((app, idx) => {
+        const isCurrent = app.packageName === currentPackage;
+        const disabled = !app.installed || app.packageName.startsWith('custom.placeholder.');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dock-item' +
+          (isCurrent ? ' active' : '') +
+          (disabled ? ' disabled' : '');
+        button.dataset.pkg = app.packageName;
+        button.title = app.displayName;
+        button.disabled = disabled;
+
+        const badge = document.createElement('span');
+        badge.className = 'dock-app-badge';
+        badge.textContent = app.badge || String(idx + 1);
+
+        if (!disabled) {
+          const icon = document.createElement('img');
+          icon.className = 'dock-app-icon';
+          icon.alt = '';
+          icon.src = '/app-icon?package=' + encodeURIComponent(app.packageName);
+          icon.addEventListener('error', () => {
+            icon.remove();
+            badge.style.display = 'flex';
+          });
+          badge.style.display = 'none';
+          button.append(icon);
+        }
+        button.append(badge);
+
+        const name = document.createElement('span');
+        name.className = 'dock-app-name';
+        name.textContent = app.displayName;
+        button.append(name);
+
+        if (!disabled) {
+          button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const pkg = button.dataset.pkg;
+            if (pkg && control && control.readyState === WebSocket.OPEN) {
+              control.send(JSON.stringify({
+                type: 'launchApp',
+                packageName: pkg,
+                activityClassName: app.activityClassName || ''
+              }));
+            }
+          });
+        }
+        container.append(button);
+      });
+    }
+
+    function updateAudio(health) {
+      const sampleRate = Number(health.audioSampleRate);
+      const channels = Number(health.audioChannels);
+      const hasAudio = Number(health.audioSequence) > 0 &&
+        sampleRate > 0 && channels > 0;
+      if (!hasAudio) {
+        stopBrowserAudio();
+        audioFormat = '';
+        sound.style.display = 'none';
+        return;
+      }
+
+      sound.style.display = 'block';
+      const format = sampleRate + ':' + channels;
+      if (format === audioFormat) return;
+      stopBrowserAudio();
+      audioFormat = format;
+      sound.dataset.sampleRate = String(sampleRate);
+      sound.dataset.channels = String(channels);
+      sound.textContent = '开启声音';
+    }
+
+    sound.addEventListener('click', () => {
+      startBrowserAudio(
+        Number(sound.dataset.sampleRate),
+        Number(sound.dataset.channels)
+      );
+    });
+
+    function startBrowserAudio(sampleRate, channels) {
+      if (!sampleRate || !channels) return;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        sound.textContent = '浏览器不支持声音';
+        return;
+      }
+      stopBrowserAudio();
+      const generation = audioGeneration;
+      try {
+        audioContext = new AudioContextClass({ sampleRate });
+        audioProcessor = audioContext.createScriptProcessor(2048, 0, channels);
+        audioProcessor.onaudioprocess = event => {
+          const output = event.outputBuffer;
+          for (let frame = 0; frame < output.length; frame++) {
+            const chunk = audioChunks[0];
+            if (!chunk) {
+              for (let channel = 0; channel < channels; channel++) {
+                output.getChannelData(channel)[frame] = 0;
+              }
+              continue;
+            }
+            for (let channel = 0; channel < channels; channel++) {
+              output.getChannelData(channel)[frame] =
+                chunk.samples[chunk.offset * channels + channel];
+            }
+            chunk.offset++;
+            if (chunk.offset >= chunk.frames) audioChunks.shift();
+          }
+        };
+        audioProcessor.connect(audioContext.destination);
+        audioContext.resume().then(() => {
+          if (generation === audioGeneration) sound.textContent = '声音已开启';
+        }).catch(error => {
+          if (generation !== audioGeneration) return;
+          console.warn('无法启动音频播放', error);
+          stopBrowserAudio();
+          sound.textContent = '无法开启声音，点击重试';
+        });
+        receivePcmAudio(channels, generation);
+      } catch (error) {
+        console.warn('无法开启声音', error);
+        stopBrowserAudio();
+        sound.textContent = '无法开启声音';
+      }
+    }
+
+    async function receivePcmAudio(channels, generation) {
+      const abort = new AbortController();
+      audioAbort = abort;
+      try {
+        const response = await fetch('/audio.pcm?t=' + Date.now(), {
+          cache: 'no-store', signal: abort.signal
+        });
+        if (!response.ok || !response.body) throw new Error('音频流不可用');
+        if (generation !== audioGeneration) {
+          await response.body.cancel();
+          return;
+        }
+        const reader = response.body.getReader();
+        audioReader = reader;
+        while (generation === audioGeneration && audioContext) {
+          const result = await reader.read();
+          if (generation !== audioGeneration) return;
+          if (result.done) break;
+          appendPcmAudio(result.value, channels);
+        }
+      } catch (error) {
+        if (generation === audioGeneration) console.warn('声音连接已中断', error);
+      } finally {
+        if (generation === audioGeneration) {
+          stopBrowserAudio();
+          sound.textContent = '声音已停止，点击重试';
+        }
+      }
+    }
+
+    function appendPcmAudio(bytes, channels) {
+      const combined = new Uint8Array(audioPending.length + bytes.length);
+      combined.set(audioPending);
+      combined.set(bytes, audioPending.length);
+      const frameBytes = channels * 2;
+      const usableLength = combined.length - (combined.length % frameBytes);
+      if (usableLength === 0) {
+        audioPending = combined;
+        return;
+      }
+      const samples = new Float32Array(usableLength / 2);
+      const view = new DataView(combined.buffer, combined.byteOffset, usableLength);
+      for (let offset = 0; offset < usableLength; offset += 2) {
+        samples[offset / 2] = view.getInt16(offset, true) / 32768;
+      }
+      audioPending = combined.slice(usableLength);
+      audioChunks.push({ samples, frames: usableLength / frameBytes, offset: 0 });
+      while (audioChunks.length > 80) audioChunks.shift();
+    }
+
+    function stopBrowserAudio() {
+      audioGeneration++;
+      if (audioAbort) {
+        audioAbort.abort();
+        audioAbort = null;
+      }
+      if (audioReader) {
+        audioReader.cancel().catch(error => console.warn('关闭音频流失败', error));
+        audioReader = null;
+      }
+      if (audioProcessor) {
+        audioProcessor.disconnect();
+        audioProcessor = null;
+      }
+      if (audioContext) {
+        audioContext.close().catch(error => console.warn('关闭音频播放失败', error));
+        audioContext = null;
+      }
+      audioChunks = [];
+      audioPending = new Uint8Array(0);
+    }
+
+    async function updateStats() {
+      try {
+        const response = await fetch('/health?t=' + Date.now(), { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const health = await response.json();
+        if (health.playerRevision && health.playerRevision !== PLAYER_REVISION) {
+          const nextUrl = new URL(location.href);
+          nextUrl.searchParams.set('v', health.playerRevision);
+          location.replace(nextUrl.toString());
+          return;
+        }
+        if (health.width > 0 && health.height > 0) {
+          outputWidth = health.width;
+          outputHeight = health.height;
+        }
+        interactive = health.interactive !== false;
+        updateModePresentation(health);
+        screen.style.touchAction = interactive ? 'none' : 'auto';
+        if (dockBar) {
+          dockBar.style.display = interactive ? 'flex' : 'none';
+        }
+        if (dockExpandBtn) {
+          dockExpandBtn.style.display = interactive && dockCollapsed ? 'flex' : 'none';
+        }
+        const displayChanged = health.displayId !== undefined &&
+          health.displayId !== lastDisplayId;
+        if (displayChanged) {
+          lastDisplayId = health.displayId;
+          lastFrameSequence = -1;
+          reloadStream('投屏应用已切换，正在刷新画面...');
+        }
+        if (health.frameSequence !== lastFrameSequence) {
+          lastFrameSequence = health.frameSequence;
+        }
+        streamHealthy = health.running &&
+          !health.waitingForSender &&
+          Number(health.frameSequence) > 0 &&
+          Number(health.frameAgeMs) >= 0 &&
+          Number(health.frameAgeMs) < 10_000;
+        screen.style.visibility = !interactive && !streamHealthy ? 'hidden' : 'visible';
+        updateAudio(health);
+        updatePromoVisibility(health.running && Number(health.fps) > 0);
+        if (dockFpsVal) {
+          dockFpsVal.textContent = Number(health.fps) > 0 ? Number(health.fps).toFixed(0) : '--';
+        }
+        if (health.apps) {
+          renderDockApps(health.apps, health.currentPackage);
+        }
+        if (health.running &&
+            (!control || control.readyState === WebSocket.CLOSED)) {
+          connectControl();
+        }
+        if (!health.running) {
+          scheduleRetry(
+            '手机投屏异常：' + (health.status || '服务未运行'),
+            true
+          );
+        } else if (health.waitingForSender || (!interactive && !streamHealthy)) {
+          markConnected();
+          showStatus(health.waitingForSender
+            ? '等待 AirPlay 设备连接，连接后自动显示'
+            : 'AirPlay 已连接，正在等待镜像画面...');
+        } else if (streamHealthy) {
+          markConnected();
+        }
+      } catch (error) {
+        streamHealthy = false;
+        if (dockFpsVal) dockFpsVal.textContent = '--';
+        updatePromoVisibility(false);
+        scheduleRetry('无法连接手机投屏服务', true);
+      }
+    }
+
+    connectControl();
+    updateStats();
+    setInterval(updateStats, 1000);
+    setInterval(reportViewport, 5000);
+  </script>
+</body>
+</html>

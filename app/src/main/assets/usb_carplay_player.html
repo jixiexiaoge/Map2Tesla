@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>特投屏 USB CarPlay</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#000;color:#fff;font:14px system-ui,sans-serif}
+body{display:flex;flex-direction:column}header{display:flex;gap:8px;align-items:center;padding:8px;background:#101923}
+#state{flex:1;font-size:12px}button{border:0;border-radius:8px;padding:8px;background:#23445c;color:white}
+#surface{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:none;user-select:none}
+img,canvas,video{position:absolute;width:100%;height:100%;object-fit:contain;pointer-events:none}
+[hidden]{display:none!important}#waiting{position:absolute;inset:0;display:grid;place-content:center;text-align:center;pointer-events:none}
+#logs{position:absolute;bottom:0;left:0;right:0;max-height:45%;overflow:auto;padding:12px;background:#101923ee;font:12px monospace;white-space:pre-wrap;pointer-events:none}
+:fullscreen header{display:none}
+</style>
+<header><span id="state">正在连接…</span><button id="quality">兼容模式</button><button id="sound">开启声音</button><button id="diagnostics">日志</button><button id="fullscreen">全屏</button></header>
+<main id="surface"><img id="jpeg" hidden alt="CarPlay"><video id="video" hidden autoplay playsinline muted></video><canvas id="canvas" hidden></canvas><div id="waiting">等待 USB iPhone</div><div id="logs" hidden></div></main>
+<script>
+'use strict';
+const PLAYER_REVISION='usb-20261011-1';
+const $=id=>document.getElementById(id),surface=$('surface'),image=$('jpeg'),video=$('video'),canvas=$('canvas');
+let ws=null,retry=0,reconnectTimer=null,imageTimer=null,suspended=false,mode='raw',shown=false;
+let stream={active:false,width:1120,height:896},notice='',frameCount=0,fps=0;
+function send(value){if(ws&&ws.readyState===WebSocket.OPEN){ws.send(JSON.stringify(value));return true;}return false;}
+function report(text){notice=text;render();}
+function render(){
+  $('waiting').hidden=shown&&stream.active;
+  $('waiting').textContent=stream.message||'等待 USB iPhone';
+  $('state').textContent=notice||`${stream.width}×${stream.height} · ${mode==='jpeg'?'MJPEG':player.label||'高清直传'} · ${fps} fps`;
+  $('quality').textContent=mode==='jpeg'?'尝试高清':'兼容模式';
+}
+function connect(){
+  if(suspended||ws)return;
+  const socket=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/control');
+  socket.binaryType='arraybuffer';ws=socket;
+  socket.onopen=()=>{
+    retry=0;notice='';send({type:'video',mode});audio.sync();render();
+    if(mode==='jpeg')startJpeg();
+  };
+  socket.onmessage=event=>{
+    if(ws!==socket)return;
+    try{
+      if(typeof event.data==='string'){
+        const value=JSON.parse(event.data);
+        if(value.revision&&value.revision!==PLAYER_REVISION){location.reload();return;}
+        if(value.type==='ready'){stream.width=value.width;stream.height=value.height;}
+      }else{
+        const bytes=new Uint8Array(event.data),view=new DataView(event.data);
+        if(bytes[0]===1&&mode==='raw')player.configure(bytes[1]===1?'h265':'h264',bytes.slice(2));
+        else if(bytes[0]===2&&mode==='raw')player.feed(bytes.subarray(10),(bytes[1]&1)!==0,Number(view.getBigUint64(2)));
+        else if(bytes[0]===3)audio.accept(bytes[1],view.getUint32(2),bytes[6],bytes.subarray(7));
+        else if(bytes[0]===4)audio.streams.delete(bytes[1]);
+      }
+    }catch(error){console.warn(error);report('播放数据异常，正在恢复');if(mode==='raw')fallback('视频数据不兼容');}
+  };
+  socket.onerror=()=>report('浏览器连接异常');
+  socket.onclose=()=>{
+    if(ws!==socket)return;
+    ws=null;pointers.clear();audio.streams.clear();player.reset();shown=false;
+    report('连接中断，正在重连…');
+    if(!suspended)reconnectTimer=setTimeout(connect,Math.min(10000,500*2**retry++));
+  };
+}
+function startJpeg(){
+  clearTimeout(imageTimer);
+  if(suspended||mode!=='jpeg')return;
+  image.hidden=false;image.src='/stream?revision='+PLAYER_REVISION+'&t='+Date.now();
+}
+image.onload=()=>{if(mode==='jpeg'){shown=true;notice='';render();}};
+image.onerror=()=>{if(mode==='jpeg'&&!suspended){report('兼容视频中断，正在重连…');imageTimer=setTimeout(startJpeg,1500);}};
+function fallback(reason){
+  if(mode==='jpeg')return;
+  player.reset();mode='jpeg';shown=false;send({type:'video',mode});startJpeg();
+  report(reason+'，已切换 MJPEG 兼容画面');
+}
+$('quality').onclick=()=>{
+  if(mode==='raw'){fallback('已选择兼容模式');return;}
+  clearTimeout(imageTimer);image.removeAttribute('src');image.hidden=true;shown=false;mode='raw';notice='';
+  send({type:'video',mode});send({type:'keyframe'});render();
+};
+function codecString(codec,d){
+  const hex=n=>n.toString(16).padStart(2,'0');
+  if(codec==='h264')return 'avc1.'+[d[1],d[2],d[3]].map(hex).join('');
+  let compatibility=((d[2]<<24)|(d[3]<<16)|(d[4]<<8)|d[5])>>>0,reversed=0;
+  for(let i=0;i<32;i++){reversed=(reversed<<1)|(compatibility&1);compatibility>>>=1;}
+  const constraints=[...d.slice(6,12)];while(constraints.length&&!constraints[constraints.length-1])constraints.pop();
+  return ['hvc1',['','A','B','C'][d[1]>>6]+(d[1]&31),(reversed>>>0).toString(16),
+    ((d[1]>>5)&1?'H':'L')+d[12],...constraints.map(n=>n.toString(16).toUpperCase())].join('.');
+}
+const player={
+  generation:0,decoder:null,pending:null,config:null,label:'',configuredAt:0,
+  async configure(codec,description){
+    if(this.config&&this.config.codec===codec&&this.config.description.length===description.length&&
+      this.config.description.every((b,i)=>b===description[i])&&(this.decoder||this.pending))return;
+    this.reset();const token=this.generation;this.config={codec,description,string:codecString(codec,description)};
+    this.pending=[];this.configuredAt=performance.now();
+    let decoder=null;
+    try{decoder=await createWebDecoder(this.config)||await createMseDecoder(this.config,token);}
+    catch(error){console.warn('CarPlay decoder setup failed',error);}
+    if(token!==this.generation){if(decoder)decoder.close();return;}
+    if(!decoder){fallback('浏览器不支持当前 '+(codec==='h265'?'H.265':'H.264'));return;}
+    this.decoder=decoder;this.label=(codec==='h265'?'H.265':'H.264')+' '+decoder.name;
+    const pending=this.pending;this.pending=null;
+    for(const args of pending)decoder.feed(...args);
+    render();
+  },
+  feed(data,key,time){
+    if(this.pending){
+      if(this.pending.length>=12){this.pending=[];send({type:'keyframe'});}
+      this.pending.push([data.slice(),key,time]);
+    }else if(this.decoder)this.decoder.feed(data,key,time);
+  },
+  reset(){
+    this.generation++;if(this.decoder)this.decoder.close();
+    this.decoder=null;this.pending=null;this.config=null;this.configuredAt=0;
+    video.hidden=true;canvas.hidden=true;shown=false;
+  },
+  present(){const changed=!shown||notice;shown=true;frameCount++;notice='';if(changed)render();}
+};
+async function createWebDecoder(config){
+  if(!window.isSecureContext||!window.VideoDecoder)return null;
+  const settings={codec:config.string,description:config.description,optimizeForLatency:true};
+  try{if(!(await VideoDecoder.isConfigSupported(settings)).supported)return null;}catch(error){console.warn(error);return null;}
+  const context=canvas.getContext('2d',{alpha:false});let closed=false,needsKey=true;
+  const decoder=new VideoDecoder({
+    output(frame){
+      if(!closed){
+        if(canvas.width!==frame.displayWidth||canvas.height!==frame.displayHeight){canvas.width=frame.displayWidth;canvas.height=frame.displayHeight;}
+        context.drawImage(frame,0,0);canvas.hidden=false;player.present();
+      }
+      frame.close();
+    },
+    error(error){if(!closed){console.warn(error);fallback('浏览器硬件解码失败');}}
+  });
+  decoder.configure(settings);
+  return {name:'WebCodecs',feed(data,key,timestamp){
+    if(closed||decoder.state!=='configured')return;
+    if(decoder.decodeQueueSize>6){needsKey=true;send({type:'keyframe'});return;}
+    if(needsKey&&!key)return;needsKey=false;
+    try{decoder.decode(new EncodedVideoChunk({type:key?'key':'delta',timestamp,data}));}
+    catch(error){console.warn(error);fallback('浏览器视频解码失败');}
+  },close(){closed=true;if(decoder.state!=='closed')decoder.close();}};
+}
+const ascii=s=>Uint8Array.from(s,c=>c.charCodeAt(0));
+function join(parts){const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){out.set(p,at);at+=p.length;}return out;}
+function integer(size,value){const out=new Uint8Array(size);for(let i=size-1;i>=0;i--){out[i]=value%256;value=Math.floor(value/256);}return out;}
+const u16=v=>integer(2,v),u32=v=>integer(4,v),u64=v=>integer(8,v),zero=n=>new Uint8Array(n);
+function box(name,...parts){const data=join(parts);return join([u32(data.length+8),ascii(name),data]);}
+const full=(name,version,flags,...parts)=>box(name,integer(1,version),integer(3,flags),...parts);
+function initMp4(config,width,height){
+  const hevc=config.codec==='h265',matrix=[0x10000,0,0,0,0x10000,0,0,0,0x40000000].map(u32);
+  const sample=box(hevc?'hvc1':'avc1',zero(6),u16(1),zero(16),u16(width),u16(height),u32(0x480000),u32(0x480000),
+    u32(0),u16(1),zero(32),u16(24),u16(65535),box(hevc?'hvcC':'avcC',config.description));
+  const table=box('stbl',full('stsd',0,0,u32(1),sample),full('stts',0,0,u32(0)),full('stsc',0,0,u32(0)),
+    full('stsz',0,0,u32(0),u32(0)),full('stco',0,0,u32(0)));
+  const media=box('mdia',full('mdhd',0,0,u32(0),u32(0),u32(90000),u32(0),u16(0x55c4),u16(0)),
+    full('hdlr',0,0,u32(0),ascii('vide'),zero(12),ascii('CarPlay'),integer(1,0)),
+    box('minf',full('vmhd',0,1,zero(8)),box('dinf',full('dref',0,0,u32(1),full('url ',0,1))),table));
+  const track=box('trak',full('tkhd',0,3,u32(0),u32(0),u32(1),u32(0),u32(0),zero(8),zero(8),...matrix,
+    u32(width*65536),u32(height*65536)),media);
+  return join([box('ftyp',ascii('isom'),u32(512),ascii('isomiso6mp41')),
+    box('moov',full('mvhd',0,0,u32(0),u32(0),u32(1000),u32(0),u32(0x10000),u16(0x100),zero(10),...matrix,zero(24),u32(2)),
+      track,box('mvex',full('trex',0,0,u32(1),u32(1),u32(0),u32(0),u32(0))))]);
+}
+function mp4Frame(sequence,data,key,time,duration){
+  const header=offset=>box('moof',full('mfhd',0,0,u32(sequence)),box('traf',full('tfhd',0,0x020000,u32(1)),
+    full('tfdt',1,0,u64(time)),full('trun',0,0x701,u32(1),u32(offset),u32(duration),u32(data.length),u32(key?0x02000000:0x01010000))));
+  return join([header(header(0).length+8),box('mdat',data)]);
+}
+let mediaOwner=0;
+async function createMseDecoder(config,token){
+  if(token!==player.generation)return null;
+  const Source=window.ManagedMediaSource||window.MediaSource,mime=`video/mp4; codecs="${config.string}"`;
+  if(!Source||!Source.isTypeSupported(mime))return null;
+  const source=new Source(),url=URL.createObjectURL(source);mediaOwner=token;video.disableRemotePlayback=true;video.src=url;
+  const clearVideo=()=>{if(mediaOwner===token){video.removeAttribute('src');video.load();video.playbackRate=1;}};
+  try{
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('MSE startup timeout')),3000);
+      source.addEventListener('sourceopen',()=>{clearTimeout(timer);resolve();},{once:true});
+    });
+  }catch(error){URL.revokeObjectURL(url);clearVideo();throw error;}
+  URL.revokeObjectURL(url);
+  if(token!==player.generation){clearVideo();return null;}
+  let buffer;
+  try{buffer=source.addSourceBuffer(mime);}catch(error){clearVideo();throw error;}
+  let closed=false,needsKey=true,sequence=0,time=0,lastArrival=0,lastKeyTime=0,keyRequestedAt=performance.now(),queuedBytes=0;
+  const queue=[initMp4(config,stream.width,stream.height)];
+  function pump(){
+    if(closed||buffer.updating||!queue.length)return;
+    try{const parts=queue.splice(0);queuedBytes=0;buffer.appendBuffer(join(parts));}
+    catch(error){console.warn(error);fallback('MSE 视频缓冲异常');}
+  }
+  buffer.addEventListener('updateend',()=>{pump();if(!closed&&video.paused)video.play().catch(error=>report('视频播放受限：'+error.message));});
+  buffer.addEventListener('error',()=>{if(!closed)fallback('MSE 视频解码失败');});
+  const frame=()=>{if(!closed){video.hidden=false;player.present();if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(frame);}};
+  if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(frame);else video.addEventListener('timeupdate',frame);
+  video.hidden=false;
+  const timer=setInterval(()=>{
+    if(closed||!video.buffered.length)return;
+    const lag=video.buffered.end(video.buffered.length-1)-video.currentTime;
+    const rate=lag>0.3?1.5:lag>0.12?1.15:1;
+    if(video.playbackRate!==rate)video.playbackRate=rate;
+    if(performance.now()-keyRequestedAt>10000){keyRequestedAt=performance.now();send({type:'keyframe'});}
+    if(!buffer.updating&&lastKeyTime>video.buffered.start(0)+1&&lastKeyTime<video.currentTime){
+      try{buffer.remove(0,lastKeyTime);}catch(error){console.warn('MSE cleanup',error);}
+    }
+  },100);
+  pump();
+  return {name:'MSE',feed(data,key,arrival){
+    if(closed||needsKey&&!key)return;
+    needsKey=false;
+    if(queue.length>=12||queuedBytes+data.length>4*1024*1024){fallback('浏览器视频处理过慢');return;}
+    const duration=lastArrival?Math.max(450,Math.min(9000,Math.round((arrival-lastArrival)*0.09))):3000;
+    lastArrival=arrival;if(key)lastKeyTime=time/90000;
+    queue.push(mp4Frame(++sequence,data,key,time,duration));queuedBytes+=data.length;time+=duration;pump();
+  },close(){
+    closed=true;clearInterval(timer);video.removeEventListener('timeupdate',frame);
+    clearVideo();
+  }};
+}
+const audio={
+  context:null,processor:null,streams:new Map(),enabled:false,
+  sync(){send({type:'audio',enabled:this.enabled&&this.context&&this.context.state==='running'&&!document.hidden});},
+  async toggle(){
+    if(this.enabled){this.enabled=false;this.sync();this.streams.clear();$('sound').textContent='开启声音';return;}
+    try{
+      if(!this.context){
+        const Context=window.AudioContext||window.webkitAudioContext;
+        if(!Context)throw new Error('浏览器不支持音频');
+        this.context=new Context({latencyHint:'interactive'});
+        this.processor=this.context.createScriptProcessor(2048,0,2);
+        this.processor.onaudioprocess=event=>this.render(event.outputBuffer);
+        this.processor.connect(this.context.destination);
+        this.context.onstatechange=()=>{if(this.context.state!=='running')this.streams.clear();this.sync();};
+      }
+      await this.context.resume();if(this.context.state!=='running')throw new Error('声音未获授权');
+      this.enabled=true;this.sync();$('sound').textContent='手机播放';
+    }catch(error){this.enabled=false;this.sync();report('声音开启失败：'+error.message);}
+  },
+  accept(id,rate,channels,bytes){
+    if(!this.enabled||!this.context||this.context.state!=='running'||!rate||channels<1||channels>2)return;
+    let s=this.streams.get(id);
+    if(!s||s.rate!==rate||s.channels!==channels){
+      const capacity=Math.ceil(rate*0.8);
+      s={rate,channels,capacity,ring:new Float32Array(capacity*channels),read:0,written:0,playing:false,target:0.08};
+      this.streams.set(id,s);
+    }
+    const data=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),frames=Math.floor(bytes.length/(2*channels));
+    for(let i=0;i<frames;i++)for(let c=0;c<channels;c++)
+      s.ring[((s.written+i)%s.capacity)*channels+c]=data.getInt16((i*channels+c)*2,true)/32768;
+    s.written+=frames;
+    if(s.written-s.read>rate*0.6)s.read=s.written-rate*s.target;
+  },
+  render(output){
+    const outputs=[output.getChannelData(0),output.getChannelData(1)];outputs.forEach(channel=>channel.fill(0));
+    if(!this.enabled)return;
+    for(const s of this.streams.values()){
+      const fill=(s.written-s.read)/s.rate;
+      if(!s.playing){if(fill<s.target)continue;s.playing=true;}
+      const step=s.rate/this.context.sampleRate*(1+Math.max(-0.01,Math.min(0.01,(fill-s.target)*0.05)));
+      for(let i=0;i<output.length;i++){
+        const pos=Math.floor(s.read);if(pos+1>=s.written){s.playing=false;s.target=Math.min(0.3,s.target+0.04);break;}
+        const fraction=s.read-pos;
+        for(let c=0;c<2;c++){const k=Math.min(c,s.channels-1),a=s.ring[(pos%s.capacity)*s.channels+k];
+          outputs[c][i]+=a+(s.ring[((pos+1)%s.capacity)*s.channels+k]-a)*fraction;}
+        s.read+=step;
+      }
+    }
+  }
+};
+$('sound').onclick=()=>audio.toggle();
+const pointers=new Map();
+function mapPoint(x,y,clamp){
+  const r=surface.getBoundingClientRect(),scale=Math.min(r.width/stream.width,r.height/stream.height);
+  if(!scale)return null;
+  const w=stream.width*scale,h=stream.height*scale,px=(x-r.left-(r.width-w)/2)/w,py=(y-r.top-(r.height-h)/2)/h;
+  if(!clamp&&(px<0||px>1||py<0||py>1))return null;
+  return {x:Math.max(0,Math.min(1,px)),y:Math.max(0,Math.min(1,py))};
+}
+function sendTouches(){if(!send({type:'touch',contacts:[...pointers.values()]}))pointers.clear();}
+function releaseTouches(){if(pointers.size){pointers.clear();sendTouches();}}
+surface.addEventListener('pointerdown',event=>{
+  if(!stream.active||pointers.size>=2||event.pointerType==='mouse'&&event.button!==0)return;
+  const point=mapPoint(event.clientX,event.clientY,false);if(!point)return;
+  event.preventDefault();const id=[...pointers.values()].some(p=>p.id===0)?1:0;
+  pointers.set(event.pointerId,{id,...point});surface.setPointerCapture(event.pointerId);sendTouches();
+});
+surface.addEventListener('pointermove',event=>{
+  const pointer=pointers.get(event.pointerId);if(!pointer)return;
+  const point=mapPoint(event.clientX,event.clientY,true);if(point){Object.assign(pointer,point);sendTouches();}
+});
+function lift(event){
+  const pointer=pointers.get(event.pointerId);if(!pointer)return;
+  if(event.type==='pointerup'){const point=mapPoint(event.clientX,event.clientY,true);if(point){Object.assign(pointer,point);sendTouches();}}
+  pointers.delete(event.pointerId);sendTouches();
+}
+for(const event of ['pointerup','pointercancel','lostpointercapture'])surface.addEventListener(event,lift);
+surface.addEventListener('contextmenu',event=>event.preventDefault());
+window.addEventListener('blur',releaseTouches);
+setInterval(()=>{if(pointers.size)sendTouches();},250);
+setInterval(()=>send({type:'ping'}),2000);
+function suspend(){
+  suspended=true;releaseTouches();send({type:'audio',enabled:false});audio.streams.clear();
+  clearTimeout(reconnectTimer);clearTimeout(imageTimer);image.removeAttribute('src');player.reset();
+  const socket=ws;ws=null;if(socket)socket.close();
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();else{suspended=false;connect();}});
+window.addEventListener('pagehide',suspend);
+window.addEventListener('pageshow',event=>{if(event.persisted){suspended=false;connect();}});
+$('diagnostics').onclick=()=>{$('logs').hidden=!$('logs').hidden;};
+$('fullscreen').onclick=async()=>{
+  try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}
+  catch(error){report('请使用浏览器菜单全屏：'+error.message);}
+};
+let polling=false;
+async function poll(){
+  if(polling||suspended)return;polling=true;
+  try{
+    const response=await fetch('/status',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);
+    const status=await response.json();
+    if(status.revision!==PLAYER_REVISION){location.reload();return;}
+    const wasActive=stream.active;stream=status;
+    if(!stream.active){releaseTouches();shown=false;audio.streams.clear();if(wasActive)player.reset();}
+    if(mode==='jpeg'){fps=Math.round(status.fps);if(status.frameAgeMillis>=0&&image.naturalWidth){shown=true;notice='';}}
+    if(mode==='raw'&&stream.active&&player.configuredAt&&!shown&&performance.now()-player.configuredAt>8000)
+      fallback('高清画面启动超时');
+    $('logs').textContent=(status.diagnostics||[]).join('\n');render();
+  }catch(error){console.warn('CarPlay status unavailable',error);report('状态连接异常：'+error.message);}
+  finally{polling=false;}
+}
+setInterval(()=>{if(mode==='raw'){fps=frameCount;frameCount=0;}poll();},1000);
+connect();poll();
+</script>
+</html>
