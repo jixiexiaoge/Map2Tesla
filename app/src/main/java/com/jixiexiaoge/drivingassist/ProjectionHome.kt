@@ -27,6 +27,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -96,6 +98,7 @@ import com.navipilot.airplay.AirPlayProjectionState
 import com.navipilot.amap2tesla.sponsorship.SponsorshipCheckout
 import com.navipilot.amap2tesla.sponsorship.SponsorshipClient
 import com.navipilot.amap2tesla.sponsorship.SponsorshipOption
+import com.navipilot.amap2tesla.sponsorship.SPONSORSHIP_OPTIONS
 import com.navipilot.amap2tesla.network.TeslaVirtualIpService
 import com.navipilot.amap2tesla.projection.ProjectionService
 import com.navipilot.looplink.LoopLinkService
@@ -154,7 +157,7 @@ fun ProjectionHome() {
     var statusTick by remember { mutableIntStateOf(0) }
     val setupChecks = rememberSetupChecks(statusTick)
     val setupReady = setupChecks.all { it.ready }
-    val airPlaySetupReady = setupChecks.filterNot { it.title == "车机地图" }.all { it.ready }
+    val airPlaySetupReady = setupChecks.filterNot { it.title == "投屏应用" }.all { it.ready }
     val airPlayReceiverReady = setupChecks.filter {
         it.title in setOf("Android 版本", "通知权限", "网络连接")
     }.all { it.ready }
@@ -496,7 +499,10 @@ private fun rememberSetupChecks(refreshTick: Int): List<SetupCheck> {
     val networkReady = refreshTick.let {
         connectionMode == ConnectionMode.TESLA || isNetworkReady(context)
     }
-    val mapReady = MapProjectionTarget.entries.any { isPackageInstalled(context, it.packageName) }
+    val projectionAppsReady = context.packageManager.queryIntentActivities(
+        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
+        0,
+    ).any { it.activityInfo.packageName != context.packageName }
     val stellarInstalled = isPackageInstalled(context, STELLAR_PACKAGE) || isPackageInstalled(context, SHIZUKU_PACKAGE)
     val serviceRunning = refreshTick.let { runCatching { Shizuku.pingBinder() }.getOrDefault(false) }
     val authorized = serviceRunning && runCatching {
@@ -528,9 +534,9 @@ private fun rememberSetupChecks(refreshTick: Int): List<SetupCheck> {
             action = { context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
         ),
         SetupCheck(
-            title = "车机地图",
-            ready = mapReady,
-            detail = if (mapReady) "已检测到可投屏地图" else "请先安装高德车机版、腾讯车机版或百度车机版",
+            title = "投屏应用",
+            ready = projectionAppsReady,
+            detail = if (projectionAppsReady) "可在投屏页的六个位置选择应用，无需预装车机地图" else "请先安装至少一个可启动的应用",
         ),
         SetupCheck(
             title = "Stellar / Shizuku",
@@ -745,7 +751,7 @@ private fun PrivilegeSetupDialog(
 }
 
 @Composable
-private fun ProjectionPage(
+internal fun ProjectionPage(
     refreshTick: Int,
     autoStartRequested: Boolean,
     onAutoStartConsumed: () -> Unit,
@@ -756,14 +762,14 @@ private fun ProjectionPage(
     var preparing by remember { mutableStateOf(false) }
     var startJob by remember { mutableStateOf<Job?>(null) }
     val projectionApps = rememberProjectionApps(context, refreshTick)
-    var selectedApp by remember { mutableStateOf(projectionApps.first()) }
+    var selectedApp by remember { mutableStateOf(projectionApps.firstOrNull { it.installed } ?: projectionApps.first()) }
     var mode by remember { mutableStateOf(ConnectionMode.load(context)) }
     var pendingSwitchApp by remember { mutableStateOf<ProjectionAppChoice?>(null) }
     var editingCustomSlot by remember { mutableStateOf<Int?>(null) }
     val running = ProjectionState.running.also { refreshTick }
     LaunchedEffect(projectionApps) {
         if (projectionApps.none { it.packageName == selectedApp.packageName && it.installed }) {
-            selectedApp = projectionApps.first()
+            selectedApp = projectionApps.firstOrNull { it.installed } ?: projectionApps.first()
         } else {
             selectedApp = projectionApps.first { it.packageName == selectedApp.packageName }
         }
@@ -813,6 +819,8 @@ private fun ProjectionPage(
         if (!autoStartRequested) return@LaunchedEffect
         onAutoStartConsumed()
         when {
+            !selectedApp.installed ->
+                Toast.makeText(context, "请先在六个自定义位置中选择要投屏的 App", Toast.LENGTH_SHORT).show()
             !isPrivilegeServiceRunning() ->
                 Toast.makeText(context, "Stellar / Shizuku 服务已断开，请返回准备页处理", Toast.LENGTH_SHORT).show()
             !hasPrivilegePermission() ->
@@ -828,12 +836,13 @@ private fun ProjectionPage(
     ) {
         HeroCard(
             eyebrow = if (running) "LIVE" else "PROJECTION",
-            title = if (running) "${selectedApp.displayName} 投屏运行中" else "默认启动高德车机版",
+            title = if (running) "${selectedApp.displayName} 投屏运行中" else "选择喜欢的 App，自由投屏",
         )
         UsageNoticeCard()
         GlassCard {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("投屏应用", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("六个位置均可自定义，点击已选应用可更换或清除。", color = Color(0xFFB8C7D9))
                 AppGrid(
                     apps = projectionApps,
                     selectedApp = selectedApp,
@@ -865,7 +874,7 @@ private fun ProjectionPage(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         modifier = Modifier.weight(1f),
-                        enabled = !running && !preparing,
+                        enabled = selectedApp.installed && !running && !preparing,
                         onClick = {
                             when {
                                 !isPrivilegeServiceRunning() ->
@@ -1702,16 +1711,19 @@ private fun AccessUrlCard(
 }
 
 @Composable
-private fun SponsorshipPage() {
+internal fun SponsorshipPage() {
     val context = LocalContext.current
     val client = remember { SponsorshipClient(context) }
     val scope = rememberCoroutineScope()
-    var options by remember { mutableStateOf<List<SponsorshipOption>>(emptyList()) }
+    var options by remember { mutableStateOf(SPONSORSHIP_OPTIONS) }
+    var sponsorshipAvailable by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var creatingOrder by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var checkout by remember { mutableStateOf<SponsorshipCheckout?>(null) }
-    var pendingOrderNo by remember { mutableStateOf<String?>(null) }
+    var selectedSponsorship by remember { mutableStateOf<SponsorshipOption?>(null) }
+    var pendingCheckout by remember { mutableStateOf<SponsorshipCheckout?>(null) }
+    val pendingOrderNo = pendingCheckout?.orderNo
     var confirmingPayment by remember { mutableStateOf(false) }
     var paymentConfirmed by remember { mutableStateOf(false) }
 
@@ -1719,12 +1731,14 @@ private fun SponsorshipPage() {
         if (loading) return
         scope.launch {
             loading = true
+            sponsorshipAvailable = false
             when (val result = client.loadOptions()) {
                 is Result.Success -> {
                     options = result.data
-                    message = if (options.isEmpty()) "暂未开放在线赞助，感谢你的支持！所有功能仍永久免费。" else null
+                    sponsorshipAvailable = true
+                    message = null
                 }
-                is Result.Error -> message = "赞助服务暂不可用：${result.message}。所有功能仍可免费使用。"
+                is Result.Error -> message = "支付宝在线赞助暂不可用：${result.message}。仍可选择金额，使用微信扫码赞助；不影响任何免费功能。"
                 Result.Loading -> Unit
             }
             loading = false
@@ -1739,7 +1753,7 @@ private fun SponsorshipPage() {
                 is Result.Success -> if (result.data) {
                     paymentConfirmed = true
                     checkout = null
-                    pendingOrderNo = null
+                    pendingCheckout = null
                     message = "赞助已确认，感谢你支持特投屏持续开发！"
                 } else {
                     message = "支付平台尚未确认，请稍后刷新；这不影响免费使用。"
@@ -1748,6 +1762,25 @@ private fun SponsorshipPage() {
                 Result.Loading -> Unit
             }
             confirmingPayment = false
+        }
+    }
+
+    fun createSponsorshipOrder(option: SponsorshipOption) {
+        if (creatingOrder || !sponsorshipAvailable || pendingOrderNo != null) return
+        selectedSponsorship = null
+        creatingOrder = true
+        paymentConfirmed = false
+        scope.launch {
+            message = when (val result = client.createOrder(option.code)) {
+                is Result.Success -> {
+                    checkout = result.data
+                    pendingCheckout = result.data
+                    "感谢支持！可在支付页自愿完成赞助，也可直接关闭。"
+                }
+                is Result.Error -> result.message
+                Result.Loading -> null
+            }
+            creatingOrder = false
         }
     }
 
@@ -1760,7 +1793,7 @@ private fun SponsorshipPage() {
                 is Result.Success -> if (result.data) {
                     paymentConfirmed = true
                     checkout = null
-                    pendingOrderNo = null
+                    pendingCheckout = null
                     message = "赞助已确认，感谢你支持特投屏持续开发！"
                     return@LaunchedEffect
                 }
@@ -1779,35 +1812,15 @@ private fun SponsorshipPage() {
         HeroCard(
             eyebrow = "THANK YOU",
             title = "喜欢特投屏？欢迎自愿赞助",
-            body = "你的支持将帮助我们持续改进体验。赞助不是购买会员，不提供额外功能，也不设有效期；不赞助同样能无限时使用全部功能。",
+            body = "与 CP搭子使用同一收款渠道。选择 5、15、25、55 元，可用微信扫码赞助或支付宝在线支付。赞助完全自愿，不赞助同样能无限时使用全部功能。",
         )
-        sponsorshipAcknowledgmentCard {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/shilapi/xcertplay")),
-                )
-        }
         options.forEach { option ->
             Button(
                 enabled = !creatingOrder && pendingOrderNo == null,
-                onClick = {
-                    creatingOrder = true
-                    paymentConfirmed = false
-                    scope.launch {
-                        message = when (val result = client.createOrder(option.code)) {
-                            is Result.Success -> {
-                                checkout = result.data
-                                pendingOrderNo = result.data.orderNo
-                                "感谢支持！可在支付页自愿完成赞助，也可直接关闭。"
-                            }
-                            is Result.Error -> result.message
-                            Result.Loading -> null
-                        }
-                        creatingOrder = false
-                    }
-                },
+                onClick = { selectedSponsorship = option },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("${option.name} · ¥${"%.2f".format(java.util.Locale.ROOT, option.priceCents / 100.0)}")
+                Text("自愿赞助 · ¥${option.priceCents / 100}")
             }
         }
         message?.let { Text(it, color = Color(0xFFB8C7D9)) }
@@ -1820,7 +1833,62 @@ private fun SponsorshipPage() {
         }
         pendingOrderNo?.let { orderNo ->
             Text("待确认订单：$orderNo", color = Color(0xFF94A3B8), style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(
+                enabled = !confirmingPayment,
+                onClick = { checkout = pendingCheckout },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("继续支付这笔赞助") }
+            TextButton(
+                enabled = !confirmingPayment,
+                onClick = {
+                    pendingCheckout = null
+                    message = "已退出本笔查询，原订单不会自动付款；请勿重复支付。可重新选择赞助金额。"
+                },
+            ) { Text("重新选择金额") }
         }
+        sponsorshipAcknowledgmentCard {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/shilapi/xcertplay")),
+            )
+        }
+    }
+
+    selectedSponsorship?.let { option ->
+        AlertDialog(
+            onDismissRequest = { selectedSponsorship = null },
+            title = { Text("自愿赞助 ¥${option.priceCents / 100}") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.sponsor),
+                        contentDescription = "与 CP搭子相同的微信收款码",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White)
+                            .padding(12.dp)
+                            .heightIn(max = 280.dp),
+                    )
+                    Text("微信赞助：截图后用微信扫一扫的相册识别，或使用另一台手机扫码。请核对收款方，并手动输入 ${option.priceCents / 100} 元。")
+                    Text("微信扫码不会自动回传支付结果，App 不会据此声称到账或解锁功能；所有功能始终免费。")
+                    if (!sponsorshipAvailable) {
+                        Text("支付宝在线支付暂不可用，可先使用上方微信收款码。")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = sponsorshipAvailable && !creatingOrder,
+                    onClick = { createSponsorshipOrder(option) },
+                ) { Text("支付宝在线支付") }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedSponsorship = null }) { Text("关闭") }
+            },
+        )
     }
 
     checkout?.let { activeCheckout ->
@@ -2144,16 +2212,7 @@ private fun openPrivilegeManager(context: Context): Boolean {
 }
 
 private fun rememberProjectionApps(context: Context, refreshTick: Int): List<ProjectionAppChoice> {
-    val defaultApps = MapProjectionTarget.entries.map { target ->
-        ProjectionAppChoice(
-            displayName = target.displayName,
-            packageName = target.packageName,
-            installed = isPackageInstalled(context, target.packageName),
-            badge = target.displayName.take(1),
-            target = target,
-        )
-    }
-    val customApps = refreshTick.let {
+    return refreshTick.let {
         (0 until CUSTOM_PROJECTION_APP_SLOTS).map { slotIndex ->
             loadCustomProjectionApp(context, slotIndex) ?: ProjectionAppChoice(
                 displayName = "自定义 ${slotIndex + 1}",
@@ -2164,19 +2223,16 @@ private fun rememberProjectionApps(context: Context, refreshTick: Int): List<Pro
             )
         }
     }
-    return defaultApps + customApps
 }
 
 private fun rememberLaunchableProjectionApps(context: Context, refreshTick: Int): List<ProjectionAppChoice> {
     val packageManager = context.packageManager
-    val defaultPackages = MapProjectionTarget.entries.map { it.packageName }.toSet()
     val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     return refreshTick.let {
         packageManager.queryIntentActivities(launchIntent, 0)
             .asSequence()
             .map { it.activityInfo.applicationInfo }
             .filter { it.packageName != context.packageName }
-            .filterNot { it.packageName in defaultPackages }
             .distinctBy { it.packageName }
             .sortedBy { it.loadLabel(packageManager).toString() }
             .map { appInfo ->
@@ -2186,6 +2242,7 @@ private fun rememberLaunchableProjectionApps(context: Context, refreshTick: Int)
                     packageName = appInfo.packageName,
                     installed = true,
                     badge = label.take(1).ifBlank { "A" },
+                    target = MapProjectionTarget.entries.firstOrNull { it.packageName == appInfo.packageName },
                 )
             }
             .toList()
@@ -2204,6 +2261,7 @@ private fun loadCustomProjectionApp(context: Context, slotIndex: Int): Projectio
             installed = false,
             badge = "!",
             customSlotIndex = slotIndex,
+            target = MapProjectionTarget.entries.firstOrNull { it.packageName == packageName },
         )
     }
     val label = runCatching {
@@ -2215,6 +2273,7 @@ private fun loadCustomProjectionApp(context: Context, slotIndex: Int): Projectio
         installed = true,
         badge = label.take(1).ifBlank { "A" },
         customSlotIndex = slotIndex,
+        target = MapProjectionTarget.entries.firstOrNull { it.packageName == packageName },
     )
 }
 
@@ -2288,7 +2347,6 @@ internal fun requiredCarPlayPermissions(sdk: Int): List<String> = buildList {
 }
 private const val PAYMENT_CONFIRMATION_ATTEMPTS = 90
 private const val PAYMENT_CONFIRMATION_INTERVAL_MS = 2_000L
-private const val MAX_PROJECTION_APP_SLOTS = 9
 private const val CUSTOM_PROJECTION_APP_SLOTS = 6
 private const val DEFAULT_PROJECTION_PORT = 8080
 private const val PREF_CUSTOM_PROJECTION_APPS = "custom_projection_apps"

@@ -124,7 +124,7 @@ class CommerceApiTest(unittest.TestCase):
     def test_sponsorship_catalog_and_public_pages_are_separate_from_legacy_plans(self):
         options = self.client.get("/api/v1/sponsorships").get_json()
         self.assertTrue(options["permanently_free"])
-        self.assertEqual(len(options["options"]), 3)
+        self.assertEqual([item["price_cents"] for item in options["options"]], [500, 1500, 2500, 5500])
         self.assertTrue(all(item["code"].startswith("sponsor_") for item in options["options"]))
         self.assertTrue(all(item["price_cents"] > 0 for item in options["options"]))
         legacy = self.client.get("/api/v1/plans").get_json()["plans"]
@@ -134,12 +134,12 @@ class CommerceApiTest(unittest.TestCase):
         self.assertIn("自愿赞助", homepage)
         self.assertNotIn("会员解锁", homepage)
 
-    def sponsorship_order(self):
+    def sponsorship_order(self, code="sponsor_5"):
         token = self.register_device()
         headers = {"Authorization": f"Bearer {token}"}
         response = self.client.post(
             "/api/v1/sponsorships/orders",
-            json={"plan_code": "sponsor_coffee", "payment_type": "alipay"},
+            json={"plan_code": code, "payment_type": "alipay"},
             headers=headers,
         )
         self.assertEqual(response.status_code, 201)
@@ -201,7 +201,8 @@ class CommerceApiTest(unittest.TestCase):
         headers = {"Authorization": f"Bearer {token}"}
         for path, code in [
             ("/api/v1/sponsorships/orders", "lifetime"),
-            ("/api/v1/orders", "sponsor_coffee"),
+            ("/api/v1/orders", "sponsor_5"),
+            ("/api/v1/sponsorships/orders", "sponsor_coffee"),
         ]:
             response = self.client.post(path, json={
                 "plan_code": code, "payment_type": "alipay",
@@ -212,8 +213,33 @@ class CommerceApiTest(unittest.TestCase):
         _, order = self.sponsorship_order()
         checkout = self.client.get(order["checkout_url"])
         self.assertEqual(checkout.status_code, 200)
-        self.assertIn("请开发者喝杯咖啡", checkout.get_data(as_text=True))
+        self.assertIn("特投屏自愿赞助 5 元", checkout.get_data(as_text=True))
         self.assertNotIn("永久解锁", checkout.get_data(as_text=True))
+
+    def test_all_four_sponsorship_amounts_reach_signed_checkout_and_verified_payment(self):
+        for yuan in (5, 15, 25, 55):
+            with self.subTest(yuan=yuan):
+                headers, order = self.sponsorship_order(f"sponsor_{yuan}")
+                self.assertEqual(order["amount"], f"{yuan}.00")
+                checkout = self.client.get(order["checkout_url"]).get_data(as_text=True)
+                self.assertIn(f'value="{yuan}.00"', checkout)
+                self.assertIn('name="sign"', checkout)
+                callback = self.sponsorship_callback(order["order_no"], f"{yuan}.00")
+                callback["trade_no"] = f"SPONSOR{yuan}"
+                callback["sign"] = zpay_signature(callback, "test-key")
+                bad_signature = dict(callback, sign="0" * 32)
+                rejected = self.client.get("/payments/zpay/notify", query_string=bad_signature)
+                self.assertEqual(rejected.status_code, 400)
+                unpaid = self.client.get(f"/api/v1/orders/{order['order_no']}", headers=headers)
+                self.assertEqual(unpaid.get_json()["status"], "pending")
+                for _ in range(2):
+                    response = self.client.get("/payments/zpay/notify", query_string=callback)
+                    self.assertEqual(response.data, b"success")
+                paid = self.client.get(f"/api/v1/orders/{order['order_no']}", headers=headers)
+                self.assertEqual(paid.get_json()["status"], "paid")
+                self.assertEqual(paid.get_json()["amount"], f"{yuan}.00")
+        with app.app_context():
+            self.assertEqual(db.session.query(License).count(), 0)
 
     def test_update_api_returns_release_only_when_manifest_and_apk_exist(self):
         self.assertEqual(

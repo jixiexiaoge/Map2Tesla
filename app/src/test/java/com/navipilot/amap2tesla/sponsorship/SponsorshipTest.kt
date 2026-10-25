@@ -25,14 +25,42 @@ class SponsorshipTest {
     fun optionsContainOnlyVoluntarySponsorshipAmounts() {
         // Given
         val response = JsonParser.parseString(
-            """{"options":[{"code":"sponsor_coffee","name":"Coffee","price_cents":500}]}""",
+            """{"options":[
+                {"code":"sponsor_55","name":"Support 55","price_cents":5500},
+                {"code":"sponsor_25","name":"Support 25","price_cents":2500},
+                {"code":"sponsor_15","name":"Support 15","price_cents":1500},
+                {"code":"sponsor_5","name":"Support 5","price_cents":500}
+            ]}""",
         ).asJsonObject
 
         // When
         val options = parseSponsorshipOptions(response)
 
         // Then
-        assertEquals(listOf(SponsorshipOption("sponsor_coffee", "Coffee", 500)), options)
+        assertEquals(listOf(500, 1500, 2500, 5500), options.map { it.priceCents })
+        assertEquals(listOf("sponsor_5", "sponsor_15", "sponsor_25", "sponsor_55"), options.map { it.code })
+    }
+
+    @Test(expected = IOException::class)
+    fun outdatedSponsorshipCatalogCannotOfferWrongAmounts() {
+        // Given / When / Then
+        parseSponsorshipOptions(JsonParser.parseString(
+            """{"options":[{"code":"sponsor_small","name":"Old support","price_cents":200}]}""",
+        ).asJsonObject)
+    }
+
+    @Test(expected = IOException::class)
+    fun changedServerPriceCannotChargeMoreThanTheDisplayedChoice() {
+        // Given
+        val json = """{"options":[
+            {"code":"sponsor_5","name":"Support","price_cents":5000},
+            {"code":"sponsor_15","name":"Support","price_cents":1500},
+            {"code":"sponsor_25","name":"Support","price_cents":2500},
+            {"code":"sponsor_55","name":"Support","price_cents":5500}
+        ]}"""
+
+        // When / Then
+        parseSponsorshipOptions(JsonParser.parseString(json).asJsonObject)
     }
 
     @Test(expected = IOException::class)

@@ -341,7 +341,7 @@ class LocalProjectionServer private constructor(
         private const val TAG = "Amap2TeslaServer"
         private const val SERVER_READ_TIMEOUT_MS = 0
         private const val ICON_SIZE = 96
-        private const val PLAYER_REVISION = "20261016-1"
+        private const val PLAYER_REVISION = "20261025-1"
         private const val LOOPLINK_PORT = 8088
         private val PACKAGE_NAME_PATTERN =
             Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")

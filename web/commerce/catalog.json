@@ -1,6 +1,30 @@
 {
   "plans": [
     {
+      "code": "sponsor_5",
+      "name": "特投屏自愿赞助 5 元",
+      "price_cents": 500,
+      "duration_days": null
+    },
+    {
+      "code": "sponsor_15",
+      "name": "特投屏自愿赞助 15 元",
+      "price_cents": 1500,
+      "duration_days": null
+    },
+    {
+      "code": "sponsor_25",
+      "name": "特投屏自愿赞助 25 元",
+      "price_cents": 2500,
+      "duration_days": null
+    },
+    {
+      "code": "sponsor_55",
+      "name": "特投屏自愿赞助 55 元",
+      "price_cents": 5500,
+      "duration_days": null
+    },
+    {
       "code": "sponsor_small",
       "name": "支持一下",
       "price_cents": 200,

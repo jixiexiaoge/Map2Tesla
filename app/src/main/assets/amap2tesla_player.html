@@ -387,11 +387,11 @@
       color: rgba(134, 239, 172, .75);
       letter-spacing: .05em;
     }
-    /* 折叠后左上角悬浮展开按钮 */
+    /* 折叠后左下角悬浮展开按钮 */
     #dockExpandBtn {
       position: fixed;
-      left: 12px;
-      top: 12px;
+      left: max(12px, env(safe-area-inset-left));
+      bottom: max(12px, env(safe-area-inset-bottom));
       z-index: 11;
       display: none;
       width: 44px;
@@ -462,7 +462,7 @@
     </div>
 
     <div id="dockApps" class="dock-section dock-apps">
-      <!-- 动态渲染 9 个应用项 -->
+      <!-- 动态渲染自定义应用与 CarPlay 入口 -->
     </div>
   </aside>
   <button id="dockExpandBtn" type="button" title="展开应用 Dock 栏">
@@ -539,7 +539,7 @@
     const pointerIds = new Map();
     const lastMoveAt = new Map();
     let lastPointerDownAt = -Infinity;
-    const PLAYER_REVISION = '20261016-1';
+    const PLAYER_REVISION = '20261025-1';
     const CARPLAY_HOST_ACTIVITY = 'com.shilapi.xcertplay.CarPlayHostActivity';
     let control = null;
     let heartbeatTimer = null;

@@ -26,6 +26,7 @@ T = TypeVar("T")
 ORDER_PENDING = "pending"
 ORDER_PAID = "paid"
 PAYMENT_TYPES = {"alipay"}
+SPONSORSHIP_PLAN_CODES = ("sponsor_5", "sponsor_15", "sponsor_25", "sponsor_55")
 TRANSFER_CODE_TTL_MINUTES = 10
 RECOVERY_TRANSFER_COOLDOWN_DAYS = 30
 
@@ -387,7 +388,7 @@ def settle_paid_order(order: Order, provider_order_no: str) -> None:
 def homepage():
     return render_template(
         "index.html",
-        plans=[plan for plan in PLANS.values() if plan.code.startswith("sponsor_")],
+        plans=[PLANS[code] for code in SPONSORSHIP_PLAN_CODES],
     )
 
 
@@ -419,7 +420,8 @@ def sponsorship_options():
         {
             "options": [
                 {"code": plan.code, "name": plan.name, "price_cents": plan.price_cents}
-                for plan in PLANS.values() if plan.code.startswith("sponsor_")
+                for code in SPONSORSHIP_PLAN_CODES
+                for plan in [PLANS[code]]
             ],
             "permanently_free": True,
         }
@@ -574,6 +576,8 @@ def create_order(device: Device):
     sponsorship = request.path == "/api/v1/sponsorships/orders"
     if plan.code.startswith("sponsor_") != sponsorship:
         return json_error("赞助订单与历史会员订单不能混用", 400)
+    if sponsorship and plan.code not in SPONSORSHIP_PLAN_CODES:
+        return json_error("此赞助选项已停用，请刷新赞助选项", 400)
 
     checkout_token = secrets.token_urlsafe(32)
     order = Order(

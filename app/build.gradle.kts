@@ -57,8 +57,8 @@ android {
         applicationId = "com.jixiexiaoge.map2tesla"
         minSdk = 29
         targetSdk = 35
-        versionCode = 26101701
-        versionName = "5.0.1"
+        versionCode = 26102501
+        versionName = "5.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

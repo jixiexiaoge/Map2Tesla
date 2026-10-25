@@ -659,17 +659,6 @@ class ProjectionService : Service() {
                 .put("installed", true)
                 .put("badge", "C")
         )
-        MapProjectionTarget.entries.forEach { target ->
-            val installed = isPackageInstalled(target.packageName)
-            array.put(
-                org.json.JSONObject()
-                    .put("displayName", target.displayName)
-                    .put("packageName", target.packageName)
-                    .put("installed", installed)
-                    .put("badge", target.displayName.take(1))
-            )
-        }
-
         val prefs = getSharedPreferences("custom_projection_apps", Context.MODE_PRIVATE)
         for (slotIndex in 0 until 6) {
             val pkg = prefs.getString("slot_${slotIndex}_package", null)?.takeIf { it.isNotBlank() }

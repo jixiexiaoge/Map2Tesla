@@ -20,7 +20,7 @@ function player() {
   let health = {
     running: true, width: 1280, height: 720, frameSequence: 10,
     frameAgeMs: 50, fps: 20, displayId: 1, interactive: true,
-    playerRevision: '20261016-1',
+    playerRevision: '20261025-1',
   };
   class Socket {
     static OPEN = 1;
@@ -54,6 +54,21 @@ test('player bootstrap reaches health polling without missing function reference
   await vm.runInContext('updateStats()', app.context);
   assert.ok(app.requests.some(request => request.url.startsWith('/health')));
   assert.equal(app.nodes.get('status').style.display, 'none');
+});
+
+test('collapsed dock is bottom-left and expands without forwarding a screen tap', () => {
+  const app = player();
+  const rule = html.match(/#dockExpandBtn\s*\{([^}]+)\}/)[1];
+  assert.match(rule, /bottom:\s*max\(12px,\s*env\(safe-area-inset-bottom\)\)/);
+  assert.match(rule, /left:\s*max\(12px,\s*env\(safe-area-inset-left\)\)/);
+  assert.doesNotMatch(rule, /(?:^|;)\s*top:/);
+  let stopped = 0;
+  const event = { preventDefault() {}, stopPropagation() { stopped++; } };
+  app.nodes.get('dockToggleBtn').handlers.click(event);
+  assert.equal(vm.runInContext('dockCollapsed', app.context), true);
+  app.nodes.get('dockExpandBtn').handlers.click(event);
+  assert.equal(vm.runInContext('dockCollapsed', app.context), false);
+  assert.equal(stopped, 2);
 });
 
 test('player advertises permanently free access without a trial or membership offer', async () => {

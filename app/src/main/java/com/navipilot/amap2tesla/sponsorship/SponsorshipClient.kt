@@ -28,6 +28,13 @@ data class SponsorshipCheckout(
     val checkoutUrl: String,
 )
 
+internal val SPONSORSHIP_OPTIONS = listOf(
+    SponsorshipOption("sponsor_5", "支持一下", 500),
+    SponsorshipOption("sponsor_15", "请开发者喝杯咖啡", 1500),
+    SponsorshipOption("sponsor_25", "支持持续开发", 2500),
+    SponsorshipOption("sponsor_55", "助力开源维护", 5500),
+)
+
 class SponsorshipClient(context: Context) {
     private val appContext = context.applicationContext
     private val preferences = SecurePrefs.get(appContext)
@@ -41,7 +48,7 @@ class SponsorshipClient(context: Context) {
 
     suspend fun createOrder(optionCode: String): Result<SponsorshipCheckout> = withContext(Dispatchers.IO) {
         runSafely(ErrorCode.NETWORK_CONNECTION_FAILED) {
-            require(optionCode.startsWith("sponsor_")) { "无效的赞助选项" }
+            require(SPONSORSHIP_OPTIONS.any { it.code == optionCode }) { "无效的赞助选项" }
             val response = authenticatedRequest(
                 path = "/api/v1/sponsorships/orders",
                 method = "POST",
@@ -162,7 +169,7 @@ class SponsorshipClient(context: Context) {
 
 internal fun parseSponsorshipOptions(root: JsonObject): List<SponsorshipOption> {
     val options = root.getAsJsonArray("options") ?: throw IOException("赞助服务未返回赞助选项")
-    return options.map { item ->
+    val parsed = options.map { item ->
         val option = item.asJsonObject
         val code = option.get("code")?.asString ?: throw IOException("赞助选项缺少编号")
         val name = option.get("name")?.asString ?: throw IOException("赞助选项缺少名称")
@@ -172,6 +179,15 @@ internal fun parseSponsorshipOptions(root: JsonObject): List<SponsorshipOption> 
         }
         SponsorshipOption(code, name, cents)
     }
+    if (parsed.size != SPONSORSHIP_OPTIONS.size ||
+        parsed.map { it.code }.toSet().size != parsed.size ||
+        SPONSORSHIP_OPTIONS.any { expected ->
+            parsed.none { it.code == expected.code && it.priceCents == expected.priceCents }
+        }
+    ) {
+        throw IOException("赞助服务尚未更新为 5、15、25、55 元选项，请稍后重试")
+    }
+    return SPONSORSHIP_OPTIONS.map { expected -> parsed.first { it.code == expected.code } }
 }
 
 internal fun isSponsorshipPaid(response: JsonObject): Boolean = when (response.get("status")?.asString) {
